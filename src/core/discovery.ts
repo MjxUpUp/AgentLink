@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import os from 'node:os';
 import type { AgentIdentity } from './types.js';
 
 const require = createRequire(import.meta.url);
@@ -14,6 +15,7 @@ export interface DiscoveryCallbacks {
     source: 'mdns';
   }) => void;
   onAgentLost: (agentId: string) => void;
+  onNetworkChange?: () => void;
 }
 
 export interface DiscoveryConfig {
@@ -41,6 +43,10 @@ export class Discovery {
   private stopped = false;
   private bonjourFactory: BonjourFactory;
 
+  // Network interface monitoring
+  private networkCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private lastKnownIPs: Set<string> = new Set();
+
   constructor(
     private identity: AgentIdentity,
     private port: number,
@@ -56,6 +62,10 @@ export class Discovery {
 
   start(): void {
     this.stopped = false;
+
+    // Start network interface monitoring
+    this.lastKnownIPs = this.getCurrentIPs();
+    this.startNetworkMonitor();
 
     if (this.config.mdns) {
       try {
@@ -74,6 +84,12 @@ export class Discovery {
 
   stop(): void {
     this.stopped = true;
+
+    // Clear network monitor timer
+    if (this.networkCheckTimer) {
+      clearInterval(this.networkCheckTimer);
+      this.networkCheckTimer = null;
+    }
 
     // Clear refresh timer
     if (this.refreshTimer) {
@@ -209,6 +225,56 @@ export class Discovery {
     this.refreshTimer = setInterval(() => {
       this.refresh();
     }, 60_000);
+  }
+
+  private getCurrentIPs(): Set<string> {
+    const ips = new Set<string>();
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name] ?? []) {
+        // Only track non-internal IPv4 addresses
+        if (!iface.internal && iface.family === 'IPv4') {
+          ips.add(iface.address);
+        }
+      }
+    }
+    return ips;
+  }
+
+  private startNetworkMonitor(): void {
+    if (this.networkCheckTimer) {
+      clearInterval(this.networkCheckTimer);
+    }
+
+    this.networkCheckTimer = setInterval(() => {
+      this.checkNetworkChange();
+    }, 5_000);
+  }
+
+  private checkNetworkChange(): void {
+    const currentIPs = this.getCurrentIPs();
+
+    // Check if the IP set has changed
+    if (currentIPs.size !== this.lastKnownIPs.size) {
+      this.lastKnownIPs = currentIPs;
+      this.handleNetworkChange();
+      return;
+    }
+
+    for (const ip of currentIPs) {
+      if (!this.lastKnownIPs.has(ip)) {
+        this.lastKnownIPs = currentIPs;
+        this.handleNetworkChange();
+        return;
+      }
+    }
+  }
+
+  private handleNetworkChange(): void {
+    // Re-publish the mDNS service with updated info
+    this.refresh();
+    // Notify via callback
+    this.callbacks.onNetworkChange?.();
   }
 
   private useStaticPeers(): void {

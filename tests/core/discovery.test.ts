@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import os from 'node:os';
 import type { AgentIdentity } from '../../src/core/types.js';
 import { Discovery } from '../../src/core/discovery.js';
 import type { BonjourInstance } from '../../src/core/discovery.js';
@@ -579,5 +580,143 @@ describe('Discovery', () => {
     expect(onAgentFound).not.toHaveBeenCalled();
 
     discovery.stop();
+  });
+
+  describe('Network interface monitoring', () => {
+    it('should start network monitor on start()', () => {
+      const onAgentFound = vi.fn();
+      const onAgentLost = vi.fn();
+      const identity = createTestIdentity();
+
+      const discovery = new Discovery(
+        identity,
+        9876,
+        { onAgentFound, onAgentLost },
+        { mdns: true, peers: [] },
+        createMockBonjourFactory(),
+      );
+
+      discovery.start();
+
+      // Advance by 5 seconds — network check should fire without error
+      vi.advanceTimersByTime(5_000);
+
+      // Service should still be published (no crash)
+      expect(mockService).toBeDefined();
+
+      discovery.stop();
+    });
+
+    it('should clear network monitor timer on stop()', () => {
+      const onAgentFound = vi.fn();
+      const onAgentLost = vi.fn();
+      const onNetworkChange = vi.fn();
+      const identity = createTestIdentity();
+
+      const discovery = new Discovery(
+        identity,
+        9876,
+        { onAgentFound, onAgentLost, onNetworkChange },
+        { mdns: true, peers: [] },
+        createMockBonjourFactory(),
+      );
+
+      discovery.start();
+      discovery.stop();
+
+      // Advance past 5 seconds — network check should NOT fire after stop
+      vi.advanceTimersByTime(10_000);
+
+      expect(onNetworkChange).not.toHaveBeenCalled();
+    });
+
+    it('should call refresh() and onNetworkChange when IPs change', () => {
+      const onAgentFound = vi.fn();
+      const onAgentLost = vi.fn();
+      const onNetworkChange = vi.fn();
+      const identity = createTestIdentity();
+
+      // Mock os.networkInterfaces to return initial IPs
+      const originalNetworkInterfaces = os.networkInterfaces;
+      let callCount = 0;
+      vi.spyOn(os, 'networkInterfaces').mockImplementation(() => {
+        callCount++;
+        if (callCount <= 2) {
+          // Initial calls (start + first check)
+          return {
+            eth0: [
+              { address: '192.168.1.10', netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: false, cidr: '192.168.1.10/24' },
+            ],
+          } as any;
+        }
+        // Subsequent calls — IP changed (DHCP renewal)
+        return {
+          eth0: [
+            { address: '192.168.1.20', netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: false, cidr: '192.168.1.20/24' },
+          ],
+        } as any;
+      });
+
+      const discovery = new Discovery(
+        identity,
+        9876,
+        { onAgentFound, onAgentLost, onNetworkChange },
+        { mdns: true, peers: [] },
+        createMockBonjourFactory(),
+      );
+
+      discovery.start();
+
+      const firstService = mockService;
+
+      // Advance 5 seconds — first network check (IPs same as initial, no change yet)
+      vi.advanceTimersByTime(5_000);
+      expect(onNetworkChange).not.toHaveBeenCalled();
+
+      // Advance another 5 seconds — IPs now different
+      vi.advanceTimersByTime(5_000);
+
+      expect(onNetworkChange).toHaveBeenCalledTimes(1);
+
+      // Service should have been refreshed (old one stopped, new one published)
+      expect(firstService.stop).toHaveBeenCalled();
+      expect(mockService).toBeDefined();
+      expect(mockService.txt.id).toBe('al-TEST0001-TEST0002-TEST0003');
+
+      discovery.stop();
+      vi.restoreAllMocks();
+    });
+
+    it('should not trigger network change when IPs remain the same', () => {
+      const onAgentFound = vi.fn();
+      const onAgentLost = vi.fn();
+      const onNetworkChange = vi.fn();
+      const identity = createTestIdentity();
+
+      // Mock stable IPs
+      vi.spyOn(os, 'networkInterfaces').mockImplementation(() => ({
+        eth0: [
+          { address: '192.168.1.10', netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: false, cidr: '192.168.1.10/24' },
+        ],
+      }) as any);
+
+      const discovery = new Discovery(
+        identity,
+        9876,
+        { onAgentFound, onAgentLost, onNetworkChange },
+        { mdns: true, peers: [] },
+        createMockBonjourFactory(),
+      );
+
+      discovery.start();
+
+      // Advance multiple check intervals
+      vi.advanceTimersByTime(20_000);
+
+      expect(onNetworkChange).not.toHaveBeenCalled();
+
+      discovery.stop();
+      vi.restoreAllMocks();
+    });
   });
 });

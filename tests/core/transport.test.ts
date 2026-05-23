@@ -258,4 +258,114 @@ describe('Transport Module', () => {
     // This would replace the existing connection from B's perspective
     // since same agentId
   });
+
+  describe('Reconnection', () => {
+    it('should schedule reconnect when a connection drops', async () => {
+      await transportA.startServer(portA);
+      await transportB.startServer(portB);
+      await transportB.connect('127.0.0.1', portA);
+
+      expect(transportB.connectedPeers).toContain(identityA.agentId);
+
+      // Close A's server to simulate a crash — B should detect disconnect and try reconnect
+      // We destroy B's socket directly to trigger the close handler
+      const disconnectPromise = new Promise<string>((resolve) => {
+        transportB.on('disconnect', (agentId: unknown) => {
+          resolve(agentId as string);
+        });
+      });
+
+      // Destroy the connection from A's side
+      transportA.stop();
+
+      const disconnectedId = await disconnectPromise;
+      expect(disconnectedId).toBe(identityA.agentId);
+
+      // Give a small window for the reconnect timer to be set
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Restart A's server so the reconnect can succeed
+      await transportA.startServer(portA);
+
+      // Wait for the reconnect (base delay is 1s)
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // B should have reconnected to A
+      expect(transportB.connectedPeers).toContain(identityA.agentId);
+    });
+
+    it('should not reconnect after stop() is called', async () => {
+      await transportA.startServer(portA);
+      await transportB.startServer(portB);
+      await transportB.connect('127.0.0.1', portA);
+
+      // Destroy B's connection by stopping A
+      const disconnectPromise = new Promise<string>((resolve) => {
+        transportB.on('disconnect', (agentId: unknown) => {
+          resolve(agentId as string);
+        });
+      });
+
+      transportA.stop();
+      await disconnectPromise;
+
+      // Now stop B — all reconnect timers should be cleared
+      transportB.stop();
+
+      // Restart A's server
+      await transportA.startServer(portA);
+
+      // Wait longer than the reconnect base delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // B should NOT have reconnected because it was stopped
+      expect(transportB.connectedPeers).not.toContain(identityA.agentId);
+    });
+
+    it('should cancel reconnect if a new connection is established', async () => {
+      await transportA.startServer(portA);
+      await transportB.startServer(portB);
+      await transportB.connect('127.0.0.1', portA);
+
+      // Destroy the connection from A's side
+      const disconnectPromise = new Promise<string>((resolve) => {
+        transportB.on('disconnect', (agentId: unknown) => {
+          resolve(agentId as string);
+        });
+      });
+
+      transportA.stop();
+      await disconnectPromise;
+
+      // Give a moment for reconnect timer to be set
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Before reconnect fires, manually connect B to A (restart A first)
+      await transportA.startServer(portA);
+      await transportB.connect('127.0.0.1', portA);
+
+      // Wait for any stale reconnect timers to have fired
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Should still be connected (no duplicate reconnect interference)
+      expect(transportB.connectedPeers).toContain(identityA.agentId);
+    });
+
+    it('should not reconnect for manually disconnected peers', async () => {
+      await transportA.startServer(portA);
+      await transportB.startServer(portB);
+      await transportB.connect('127.0.0.1', portA);
+
+      // Manually disconnect B from A
+      transportB.disconnect(identityA.agentId);
+
+      expect(transportB.connectedPeers).not.toContain(identityA.agentId);
+
+      // Wait longer than reconnect base delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // B should NOT have reconnected because it was a manual disconnect
+      expect(transportB.connectedPeers).not.toContain(identityA.agentId);
+    });
+  });
 });

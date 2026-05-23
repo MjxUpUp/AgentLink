@@ -40,6 +40,8 @@ interface PendingHandshake {
   pullState: unknown | null;
   // Which phase of the handshake we're in
   phase: 'wait-pk' | 'wait-header' | 'wait-card';
+  // Target address (client-side only, for reconnection)
+  targetAddress: { host: string; port: number } | null;
 }
 
 type TransportEventType = 'connect' | 'disconnect' | 'message' | 'error';
@@ -55,11 +57,18 @@ export class Transport {
   private stopped: boolean = false;
   private onAudit?: (event: { timestamp: string; eventType: string; agentId?: string; direction?: string; details: Record<string, unknown> }) => void;
 
+  // Reconnection state
+  private reconnectAttempts: Map<string, number> = new Map();
+  private reconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private knownAddresses: Map<string, { host: string; port: number }> = new Map();
+
   private static readonly MAX_CONNECTIONS = 20;
   private static readonly HEARTBEAT_INTERVAL_MS = 30_000;
   private static readonly HEARTBEAT_TIMEOUT_MS = 90_000;
   private static readonly HEADER_SIZE = 4;
   private static readonly PUBLIC_KEY_SIZE = 32;
+  private static readonly RECONNECT_BASE_MS = 1_000;
+  private static readonly RECONNECT_CAP_MS = 30_000;
 
   constructor(
     identity: AgentIdentity,
@@ -123,6 +132,7 @@ export class Transport {
           pushState: null,
           pullState: null,
           phase: 'wait-pk',
+          targetAddress: { host, port },
         };
         this.pendingHandshakes.set(socket, handshake);
 
@@ -174,6 +184,7 @@ export class Transport {
     const conn = this.connections.get(agentId);
     if (!conn) return;
 
+    this.cancelReconnect(agentId);
     this.cleanupConnection(conn);
     this.connections.delete(agentId);
     this.emit('disconnect', agentId);
@@ -183,6 +194,13 @@ export class Transport {
 
   stop(): void {
     this.stopped = true;
+
+    // Clear all reconnect timers
+    for (const [, timer] of this.reconnectTimers) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers.clear();
+    this.reconnectAttempts.clear();
 
     for (const [agentId, conn] of this.connections) {
       this.cleanupConnection(conn);
@@ -202,6 +220,62 @@ export class Transport {
   }
 
   // --- Event helpers ---
+
+  // --- Reconnection ---
+
+  private scheduleReconnect(agentId: string): void {
+    // Only reconnect if we know the address and haven't stopped
+    if (this.stopped) return;
+    if (!this.knownAddresses.has(agentId)) return;
+
+    // Don't schedule if already connected (e.g. reconnection already succeeded)
+    if (this.connections.has(agentId)) return;
+
+    const attempts = this.reconnectAttempts.get(agentId) ?? 0;
+
+    // Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap
+    const delay = Math.min(
+      Transport.RECONNECT_BASE_MS * Math.pow(2, attempts),
+      Transport.RECONNECT_CAP_MS,
+    );
+
+    // Cancel any existing reconnect timer for this peer
+    const existingTimer = this.reconnectTimers.get(agentId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(agentId);
+
+      // Re-check conditions before attempting
+      if (this.stopped) return;
+      if (!this.knownAddresses.has(agentId)) return;
+      if (this.connections.has(agentId)) return;
+
+      const addr = this.knownAddresses.get(agentId)!;
+      this.connect(addr.host, addr.port).then(() => {
+        // Reconnection succeeded — reset attempts
+        this.reconnectAttempts.delete(agentId);
+      }).catch(() => {
+        // Reconnection failed — increment attempts and schedule next
+        this.reconnectAttempts.set(agentId, attempts + 1);
+        this.scheduleReconnect(agentId);
+      });
+    }, delay);
+
+    this.reconnectTimers.set(agentId, timer);
+    this.reconnectAttempts.set(agentId, attempts + 1);
+  }
+
+  private cancelReconnect(agentId: string): void {
+    const timer = this.reconnectTimers.get(agentId);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(agentId);
+    }
+    this.reconnectAttempts.delete(agentId);
+  }
 
   on(event: TransportEventType, listener: (...args: unknown[]) => void): void {
     if (!this.listeners.has(event)) {
@@ -235,6 +309,7 @@ export class Transport {
       pushState: null,
       pullState: null,
       phase: 'wait-pk',
+      targetAddress: null,
     };
     this.pendingHandshakes.set(socket, handshake);
 
@@ -429,6 +504,18 @@ export class Transport {
         remotePort: hs.socket.remotePort ?? 0,
       };
 
+      // Save known address for reconnection
+      if (hs.targetAddress) {
+        // Client-side: use the target address we connected to
+        this.knownAddresses.set(peerAgentId, hs.targetAddress);
+      } else if (conn.remoteHost !== 'unknown' && conn.remotePort > 0) {
+        // Server-side: use the remote address (less ideal but still useful)
+        this.knownAddresses.set(peerAgentId, { host: conn.remoteHost, port: conn.remotePort });
+      }
+
+      // Cancel any pending reconnect for this peer
+      this.cancelReconnect(peerAgentId);
+
       this.connections.set(peerAgentId, conn);
       this.pendingHandshakes.delete(hs.socket);
 
@@ -551,6 +638,7 @@ export class Transport {
     this.cleanupConnection(conn);
     this.connections.delete(agentId);
     this.emit('disconnect', agentId);
+    this.scheduleReconnect(agentId);
   }
 
   private handleConnectionClose(conn: PeerConnection): void {
@@ -559,6 +647,7 @@ export class Transport {
     this.cleanupConnection(conn);
     this.connections.delete(agentId);
     this.emit('disconnect', agentId);
+    this.scheduleReconnect(agentId);
   }
 
   // --- Utility ---
