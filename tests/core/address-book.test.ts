@@ -3,19 +3,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createRequire } from 'node:module';
-import { AgentLinkDB } from '../../src/db/database.js';
+import { AgentDatabase } from '../../src/db/database.js';
 import { AddressBook } from '../../src/core/address-book.js';
 
 const require = createRequire(import.meta.url);
 
 let tmpDir: string;
-let db: AgentLinkDB;
+let db: AgentDatabase;
 let addressBook: AddressBook;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentlink-ab-test-'));
   const dbPath = path.join(tmpDir, 'test.db');
-  db = new AgentLinkDB(dbPath);
+  db = new AgentDatabase(dbPath);
   addressBook = new AddressBook(db);
 });
 

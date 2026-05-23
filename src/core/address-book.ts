@@ -1,4 +1,4 @@
-import { AgentLinkDB } from '../db/database.js';
+import { AgentDatabase } from '../db/database.js';
 
 export interface AddressBookEntry {
   agentId: string;
@@ -11,68 +11,60 @@ export interface AddressBookEntry {
 }
 
 export class AddressBook {
-  private db: AgentLinkDB;
+  private db: AgentDatabase;
 
-  constructor(db: AgentLinkDB) {
+  constructor(db: AgentDatabase) {
     this.db = db;
   }
 
   updateAddress(agentId: string, ip: string, port: number, source: 'mdns' | 'static' | 'address-book'): void {
     const now = Date.now();
 
-    const existing = this.db.db.prepare('SELECT connection_count FROM address_book WHERE agent_id = ?').get(agentId) as { connection_count: number } | undefined;
+    const existing = this.db.getAddress(agentId);
+    const connectionCount = existing
+      ? ((existing as any).connection_count as number) + 1
+      : 1;
 
-    if (existing) {
-      this.db.db.prepare(`
-        UPDATE address_book
-        SET ip = ?, port = ?, source = ?, last_seen = ?, connection_count = ?
-        WHERE agent_id = ?
-      `).run(ip, port, source, now, existing.connection_count + 1, agentId);
-    } else {
-      this.db.db.prepare(`
-        INSERT INTO address_book (agent_id, ip, port, source, last_seen, connection_count)
-        VALUES (?, ?, ?, ?, ?, 1)
-      `).run(agentId, ip, port, source, now);
-    }
+    this.db.upsertAddress({
+      agentId,
+      lastKnownIp: ip,
+      port,
+      lastSeen: now,
+      source,
+      connectionCount,
+    });
   }
 
   resolveAddress(agentId: string): { ip: string; port: number } | null {
-    const row = this.db.db.prepare('SELECT ip, port FROM address_book WHERE agent_id = ?').get(agentId) as { ip: string; port: number } | undefined;
+    const row = this.db.getAddress(agentId) as Record<string, unknown> | null;
 
-    if (!row) {
+    if (!row || !row['last_known_ip']) {
       return null;
     }
 
-    return { ip: row.ip, port: row.port };
+    return {
+      ip: row['last_known_ip'] as string,
+      port: row['port'] as number,
+    };
   }
 
   removeAgent(agentId: string): void {
-    this.db.db.prepare('DELETE FROM address_book WHERE agent_id = ?').run(agentId);
+    // Use a direct delete — we need a helper in the db
+    // For now use the db's prepare to do it
+    this.db.prepare('DELETE FROM address_book WHERE agent_id = ?').run(agentId);
   }
 
   listAgents(): AddressBookEntry[] {
-    const rows = this.db.db.prepare(`
-      SELECT agent_id, hostname, ip, port, last_seen, source, connection_count
-      FROM address_book
-      ORDER BY last_seen DESC
-    `).all() as Array<{
-      agent_id: string;
-      hostname: string | null;
-      ip: string;
-      port: number;
-      last_seen: number;
-      source: string;
-      connection_count: number;
-    }>;
+    const rows = this.db.listAddresses() as Array<Record<string, unknown>>;
 
     return rows.map(row => ({
-      agentId: row.agent_id,
-      hostname: row.hostname ?? undefined,
-      ip: row.ip,
-      port: row.port,
-      lastSeen: row.last_seen,
-      source: row.source,
-      connectionCount: row.connection_count,
+      agentId: row['agent_id'] as string,
+      hostname: (row['hostname'] as string) || undefined,
+      ip: (row['last_known_ip'] as string) || undefined,
+      port: row['port'] as number | undefined,
+      lastSeen: row['last_seen'] as number,
+      source: row['source'] as string,
+      connectionCount: row['connection_count'] as number,
     }));
   }
 }
