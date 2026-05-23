@@ -69,9 +69,17 @@ program
       console.log('AgentLink server starting...');
       console.log('  Agent ID: ' + result.agentId);
 
+      // Start the MCP server (stdio transport + network transport + discovery)
+      await result.server.start();
+
       // Graceful shutdown
-      const shutdown = () => {
+      const shutdown = async () => {
         console.log('\nShutting down...');
+        try {
+          await result.server.stop();
+        } catch {
+          // Best effort
+        }
         process.exit(0);
       };
 

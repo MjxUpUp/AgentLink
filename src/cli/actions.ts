@@ -8,6 +8,7 @@ import {
   getFingerprint,
 } from '../core/identity.js';
 import { TrustManager } from '../core/trust-manager.js';
+import { AgentLinkServer } from '../mcp/server.js';
 import type { AgentLinkConfig } from '../core/types.js';
 import { DEFAULT_CONFIG } from '../core/types.js';
 
@@ -84,7 +85,7 @@ export async function initAction(
 
 export async function serveAction(
   configDir: string,
-): Promise<{ agentId: string }> {
+): Promise<{ agentId: string; server: AgentLinkServer }> {
   const identity = loadIdentity(configDir);
   if (!identity) {
     throw new Error('No identity found. Run `agentlink init` first.');
@@ -95,9 +96,8 @@ export async function serveAction(
     throw new Error('No config found. Run `agentlink init` first.');
   }
 
-  // AgentLinkServer is a placeholder for now
-  // When implemented, this will create and start the server
-  return { agentId: identity.agentId };
+  const server = AgentLinkServer.createFromConfig(configDir);
+  return { agentId: identity.agentId, server };
 }
 
 // ── trust list ────────────────────────────────────────────────────────────────

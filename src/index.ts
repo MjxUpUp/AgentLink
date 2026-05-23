@@ -1,1 +1,10 @@
 export { AgentLinkServer } from './mcp/server.js';
+export { Transport } from './core/transport.js';
+export { Discovery } from './core/discovery.js';
+export { TaskManager } from './core/task-manager.js';
+export { TrustManager } from './core/trust-manager.js';
+export { AuditLogger } from './core/audit-logger.js';
+export { AddressBook } from './core/address-book.js';
+export { AgentDatabase } from './db/database.js';
+export * from './core/types.js';
+export { generateIdentity, deriveAgentId, signMessage, verifyMessage, getFingerprint, saveIdentity, loadIdentity } from './core/identity.js';
