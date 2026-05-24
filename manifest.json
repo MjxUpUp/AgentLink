@@ -1,5 +1,5 @@
 {
-  "manifest_version": "0.2",
+  "dxt_version": "0.2",
   "name": "AgentLink",
   "version": "0.1.0",
   "description": "P2P communication layer for AI programming agents. Connect AI agents on your local network via encrypted channels, discover peers through mDNS, and delegate tasks.",
@@ -7,8 +7,10 @@
     "name": "AgentLink Team"
   },
   "compatibility": {
-    "node": ">=18.0.0",
-    "platforms": ["win32", "darwin", "linux"]
+    "platforms": ["win32", "darwin", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
   },
   "server": {
     "type": "node",
