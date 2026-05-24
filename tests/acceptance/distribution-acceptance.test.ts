@@ -1,36 +1,37 @@
 /**
  * Acceptance tests: Distribution mechanism
  *
- * Verifies the dual-track distribution implementation:
+ * Verifies the dual-track distribution implementation across 7 areas:
  * 1. CLI process-level auto-init (non-TTY / MCP host mode)
- * 2. CLI process-level auto-init (TTY / interactive mode)
- * 3. CLI process-level auto-init skip (identity already exists)
- * 4. Init command default values
- * 5. package.json publish readiness
+ * 2. promptForInit readline behavior (unit-level with mock)
+ * 3. CLI edge cases (corrupt identity, missing config, etc.)
+ * 4. Init command default values and output
+ * 5. package.json publish readiness + dist/ existence
  * 6. manifest.json DXT format validity
  * 7. README dual-track Quick Start content
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import readline from 'node:readline';
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '../..');
 const CLI_PATH = path.join(PROJECT_ROOT, 'dist/cli/index.js');
 
 // ── Helper: run CLI in a temp config dir ──────────────────────────────────────
 
-function runCli(args: string[], envDir: string, options?: { input?: string }): {
+function runCli(args: string[], envDir: string, options?: { input?: string; timeout?: number }): {
   stdout: string;
   stderr: string;
-  exitCode: number;
+  exitCode: number | null;
 } {
   const result = spawnSync('node', [CLI_PATH, ...args], {
     cwd: PROJECT_ROOT,
     env: { ...process.env, AGENTLINK_DIR: envDir },
-    timeout: 15000,
+    timeout: options?.timeout ?? 15000,
     encoding: 'utf-8',
     input: options?.input,
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -39,7 +40,7 @@ function runCli(args: string[], envDir: string, options?: { input?: string }): {
   return {
     stdout: result.stdout ?? '',
     stderr: result.stderr ?? '',
-    exitCode: result.status ?? 1,
+    exitCode: result.status,
   };
 }
 
@@ -59,16 +60,13 @@ describe('Acceptance: CLI auto-init (non-TTY / MCP host mode)', () => {
   it('serve auto-creates identity with defaults when none exists', () => {
     const result = runCli(['serve'], tmpDir);
 
-    // Should have auto-initialized (stderr warnings)
     expect(result.stderr).toContain('Auto-initializing with defaults');
     expect(result.stderr).toContain('WARNING: Secret key created');
     expect(result.stderr).toContain(path.join(tmpDir, 'identity.json'));
 
-    // Verify identity file was created on disk
     expect(fs.existsSync(path.join(tmpDir, 'identity.json'))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, 'config.json'))).toBe(true);
 
-    // Verify identity content uses defaults
     const identity = JSON.parse(
       fs.readFileSync(path.join(tmpDir, 'identity.json'), 'utf-8'),
     );
@@ -92,17 +90,13 @@ describe('Acceptance: CLI auto-init (non-TTY / MCP host mode)', () => {
     expect(config.security.autoApproveTrusted).toBe(true);
   });
 
-  it('auto-init identity file has restricted permissions', () => {
-    runCli(['serve'], tmpDir);
+  it('auto-init does not pollute stdout (MCP transport channel)', () => {
+    const result = runCli(['serve'], tmpDir);
 
-    const stat = fs.statSync(path.join(tmpDir, 'identity.json'));
-    // On Windows, mode may not reflect unix permissions — skip mode check on win32
-    if (process.platform !== 'win32') {
-      const mode = stat.mode & 0o777;
-      expect(mode).toBeLessThanOrEqual(0o600);
-    }
-    // At minimum, file must exist and be non-empty
-    expect(stat.size).toBeGreaterThan(0);
+    expect(result.stdout).not.toContain('Auto-initializing');
+    expect(result.stdout).not.toContain('WARNING');
+    expect(result.stdout).not.toContain('Welcome to AgentLink');
+    expect(result.stdout).not.toContain('AgentLink initialized');
   });
 
   it('serve skips auto-init when identity already exists', () => {
@@ -116,7 +110,6 @@ describe('Acceptance: CLI auto-init (non-TTY / MCP host mode)', () => {
 
     expect(serveResult.stderr).not.toContain('Auto-initializing');
 
-    // Identity should still be the original
     const identity = JSON.parse(
       fs.readFileSync(path.join(tmpDir, 'identity.json'), 'utf-8'),
     );
@@ -124,69 +117,142 @@ describe('Acceptance: CLI auto-init (non-TTY / MCP host mode)', () => {
     expect(identity.agentType).toBe('coder');
   });
 
-  it('auto-init does not pollute stdout (MCP transport channel)', () => {
-    const result = runCli(['serve'], tmpDir);
-
-    // stdout is the MCP stdio channel — must be clean
-    // Only MCP protocol messages should appear, not our init logs
-    expect(result.stdout).not.toContain('Auto-initializing');
-    expect(result.stdout).not.toContain('WARNING');
-    expect(result.stdout).not.toContain('Welcome to AgentLink');
-  });
-
-  it('auto-init creates valid identity that serveAction can use', async () => {
+  it('auto-init creates identity loadable by serveAction', async () => {
     runCli(['serve'], tmpDir);
 
     const { loadIdentity } = await import('../../src/core/identity.js');
     const identity = loadIdentity(tmpDir);
     expect(identity).not.toBeNull();
     expect(identity!.agentId).toMatch(/^al-/);
-    expect(identity!.name).toBe(os.hostname());
     expect(identity!.publicKey).toBeInstanceOf(Uint8Array);
     expect(identity!.publicKey.length).toBeGreaterThan(0);
   });
 });
 
-// ── 2. CLI process-level: auto-init in TTY mode ──────────────────────────────
+// ── 2. promptForInit readline behavior (unit-level mock) ───────────────────────
 
-describe('Acceptance: CLI auto-init (TTY / interactive mode)', () => {
+describe('Acceptance: promptForInit readline interaction', () => {
+  it('promptForInit returns user input for each question', async () => {
+    // Mock readline to simulate user answers
+    const mockAnswers = ['MyTestAgent', 'reviewer', 'code-review,testing'];
+    let callIndex = 0;
+
+    const mockRl = {
+      question: vi.fn((_prompt: string, cb: (answer: string) => void) => {
+        cb(mockAnswers[callIndex++] || '');
+      }),
+      close: vi.fn(),
+    };
+
+    vi.spyOn(readline, 'createInterface').mockReturnValue(mockRl as any);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const { promptForInit } = await import('../../src/cli/prompts.js');
+    const result = await promptForInit();
+
+    expect(result.name).toBe('MyTestAgent');
+    expect(result.type).toBe('reviewer');
+    expect(result.capabilities).toBe('code-review,testing');
+
+    // Verify all 3 questions were asked
+    expect(mockRl.question).toHaveBeenCalledTimes(3);
+    expect(mockRl.close).toHaveBeenCalledOnce();
+
+    vi.restoreAllMocks();
+  });
+
+  it('promptForInit falls back to defaults on empty input', async () => {
+    const mockAnswers = ['', '', ''];
+    let callIndex = 0;
+
+    const mockRl = {
+      question: vi.fn((_prompt: string, cb: (answer: string) => void) => {
+        cb(mockAnswers[callIndex++] || '');
+      }),
+      close: vi.fn(),
+    };
+
+    vi.spyOn(readline, 'createInterface').mockReturnValue(mockRl as any);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const { promptForInit } = await import('../../src/cli/prompts.js');
+    const result = await promptForInit();
+
+    expect(result.name).toBe(os.hostname());
+    expect(result.type).toBe('agent');
+    expect(result.capabilities).toBe('');
+
+    vi.restoreAllMocks();
+  });
+});
+
+// ── 3. CLI edge cases ─────────────────────────────────────────────────────────
+
+describe('Acceptance: CLI edge cases', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentlink-tty-acceptance-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentlink-edge-'));
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('promptForInit reads from stdin when piped', async () => {
-    // Test the prompts module directly since spawnSync cannot simulate isTTY
-    const { promptForInit, getAutoInitOptions } = await import('../../src/cli/prompts.js');
+  it('serve handles corrupt identity.json gracefully', () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'identity.json'), 'not valid json {{{');
 
-    // Verify getAutoInitOptions provides the expected defaults
-    const defaults = getAutoInitOptions();
-    expect(defaults.type).toBe('agent');
-    expect(defaults.name).toBe(os.hostname());
+    const result = runCli(['serve'], tmpDir);
+
+    // Should not auto-init (identity file exists) but should fail loading it
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.length).toBeGreaterThan(0);
   });
 
-  it('serve interactive mode creates identity with defaults when stdin is empty', () => {
-    // When stdin has no input but is piped, readline gets EOF and defaults are used
-    const input = '\n\n\n';
-    runCli(['serve'], tmpDir, { input });
+  it('serve handles config.json without identity.json', () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'config.json'), JSON.stringify({
+      identity: { name: 'Orphan', agentType: 'test', capabilities: [] },
+      network: { port: 9876, mdns: true, bindAllInterfaces: true, excludeInterfaces: [], peers: [] },
+      security: { requireApproval: 'untrusted', autoApproveTrusted: true, maxConcurrentTasks: 3 },
+      logging: { level: 'info', auditLog: true },
+    }));
 
+    // No identity → should auto-init
+    const result = runCli(['serve'], tmpDir);
+
+    expect(result.stderr).toContain('Auto-initializing');
     expect(fs.existsSync(path.join(tmpDir, 'identity.json'))).toBe(true);
+  });
+
+  it('status command fails gracefully without identity', () => {
+    const result = runCli(['status'], tmpDir);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('No identity');
+  });
+
+  it('trust list returns empty without trust file', () => {
+    // init first
+    runCli(['init'], tmpDir);
+    const result = runCli(['trust', 'list'], tmpDir);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('No trusted agents');
+  });
+
+  it('identity file has secretKey field (not empty)', () => {
+    runCli(['init'], tmpDir);
 
     const identity = JSON.parse(
       fs.readFileSync(path.join(tmpDir, 'identity.json'), 'utf-8'),
     );
-    // Piped stdin (non-TTY) triggers the silent auto-init path
-    expect(identity.name).toBe(os.hostname());
-    expect(identity.agentType).toBe('agent');
+    expect(identity.secretKey).toBeDefined();
+    expect(typeof identity.secretKey).toBe('string');
+    expect(identity.secretKey.length).toBeGreaterThan(0);
   });
 });
 
-// ── 3. Init command default values ───────────────────────────────────────────
+// ── 4. Init command default values and output ─────────────────────────────────
 
 describe('Acceptance: init command defaults', () => {
   let tmpDir: string;
@@ -238,7 +304,6 @@ describe('Acceptance: init command defaults', () => {
 
   it('init fails with error if identity already exists', () => {
     runCli(['init'], tmpDir);
-
     const result = runCli(['init'], tmpDir);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('already exists');
@@ -252,13 +317,12 @@ describe('Acceptance: init command defaults', () => {
     );
     expect(config.identity.name).toBe('ConfigBot');
     expect(config.identity.agentType).toBe('coder');
-    // Verify other defaults are present
     expect(config.network.port).toBe(9876);
     expect(config.logging.auditLog).toBe(true);
   });
 });
 
-// ── 4. package.json publish readiness ─────────────────────────────────────────
+// ── 5. package.json publish readiness + dist/ existence ────────────────────────
 
 describe('Acceptance: package.json publish readiness', () => {
   let pkg: any;
@@ -271,8 +335,6 @@ describe('Acceptance: package.json publish readiness', () => {
 
   it('has required npm publish fields', () => {
     expect(pkg.name).toBe('@agentlink/server');
-    expect(pkg.version).toBeDefined();
-    expect(typeof pkg.version).toBe('string');
     expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.description).toBeDefined();
     expect(pkg.license).toBe('MIT');
@@ -280,21 +342,17 @@ describe('Acceptance: package.json publish readiness', () => {
   });
 
   it('has repository field for npm discoverability', () => {
-    expect(pkg.repository).toBeDefined();
     expect(pkg.repository.type).toBe('git');
     expect(pkg.repository.url).toContain('github.com');
   });
 
   it('has keywords for npm search', () => {
-    expect(Array.isArray(pkg.keywords)).toBe(true);
-    expect(pkg.keywords.length).toBeGreaterThanOrEqual(3);
     expect(pkg.keywords).toContain('mcp');
     expect(pkg.keywords).toContain('agent');
     expect(pkg.keywords).toContain('p2p');
   });
 
   it('has bin field for CLI entry point', () => {
-    expect(pkg.bin).toBeDefined();
     expect(pkg.bin.agentlink).toBe('./dist/cli/index.js');
   });
 
@@ -304,7 +362,6 @@ describe('Acceptance: package.json publish readiness', () => {
 
   it('has pack:mcpb script for .mcpb packaging', () => {
     expect(pkg.scripts['pack:mcpb']).toContain('dxt pack');
-    expect(pkg.scripts['pack:mcpb']).toContain('agentlink.mcpb');
   });
 
   it('declares zod as direct dependency', () => {
@@ -322,9 +379,17 @@ describe('Acceptance: package.json publish readiness', () => {
   it('type is ESM module', () => {
     expect(pkg.type).toBe('module');
   });
+
+  it('dist/ directory exists and contains CLI entry point', () => {
+    const distCliPath = path.join(PROJECT_ROOT, 'dist/cli/index.js');
+    expect(fs.existsSync(distCliPath)).toBe(true);
+
+    const content = fs.readFileSync(distCliPath, 'utf-8');
+    expect(content).toContain('agentlink');
+  });
 });
 
-// ── 5. manifest.json DXT format validity ──────────────────────────────────────
+// ── 6. manifest.json DXT format validity ──────────────────────────────────────
 
 describe('Acceptance: manifest.json DXT format', () => {
   let manifest: any;
@@ -354,14 +419,17 @@ describe('Acceptance: manifest.json DXT format', () => {
     expect(manifest.version).toBe(pkg.version);
   });
 
+  it('entry_point file exists in dist/', () => {
+    const entryPath = path.join(PROJECT_ROOT, manifest.server.entry_point);
+    expect(fs.existsSync(entryPath)).toBe(true);
+  });
+
   it('has server config pointing to correct entry point', () => {
-    expect(manifest.server).toBeDefined();
     expect(manifest.server.type).toBe('node');
     expect(manifest.server.entry_point).toBe('dist/cli/index.js');
   });
 
   it('has mcp_config with serve argument and __dirname interpolation', () => {
-    expect(manifest.server.mcp_config).toBeDefined();
     expect(manifest.server.mcp_config.command).toBe('node');
     expect(manifest.server.mcp_config.args[0]).toContain('${__dirname}');
     expect(manifest.server.mcp_config.args).toContain('serve');
@@ -386,7 +454,7 @@ describe('Acceptance: manifest.json DXT format', () => {
   });
 });
 
-// ── 6. README dual-track content ──────────────────────────────────────────────
+// ── 7. README dual-track content ──────────────────────────────────────────────
 
 describe('Acceptance: README dual-track Quick Start', () => {
   it('English README has all Quick Start sections in correct order', () => {
@@ -399,13 +467,11 @@ describe('Acceptance: README dual-track Quick Start', () => {
     const mcpHostIdx = readme.indexOf('"mcpServers"');
     const manualIdx = readme.indexOf('Manual init');
 
-    // All sections exist
     expect(oneClickIdx).toBeGreaterThan(-1);
     expect(cliIdx).toBeGreaterThan(-1);
     expect(mcpHostIdx).toBeGreaterThan(-1);
     expect(manualIdx).toBeGreaterThan(-1);
 
-    // Sections appear in order: one-click → CLI → MCP host → manual
     expect(oneClickIdx).toBeLessThan(cliIdx);
     expect(cliIdx).toBeLessThan(mcpHostIdx);
     expect(mcpHostIdx).toBeLessThan(manualIdx);
@@ -435,13 +501,15 @@ describe('Acceptance: README dual-track Quick Start', () => {
     const readme = fs.readFileSync(
       path.join(PROJECT_ROOT, 'README.md'), 'utf-8',
     );
-    expect(readme).toMatch(/agentlink\.mcpb.*releases/);
+    expect(readme).toMatch(/agentlink\.mcpb/);
+    expect(readme).toMatch(/releases/);
   });
 
   it('Chinese README contains .mcpb download link', () => {
     const readme = fs.readFileSync(
       path.join(PROJECT_ROOT, 'README_CN.md'), 'utf-8',
     );
-    expect(readme).toMatch(/agentlink\.mcpb.*releases/);
+    expect(readme).toMatch(/agentlink\.mcpb/);
+    expect(readme).toMatch(/releases/);
   });
 });

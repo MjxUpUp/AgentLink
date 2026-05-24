@@ -73,7 +73,7 @@ program
         if (process.stdout.isTTY) {
           const opts = await promptForInit();
           await initAction(opts, configDir);
-          console.log('AgentLink initialized!\n');
+          process.stderr.write('AgentLink initialized!\n\n');
         } else {
           const opts = getAutoInitOptions();
           await initAction(opts, configDir);
@@ -94,7 +94,7 @@ program
       await result.server.start();
 
       const shutdown = async () => {
-        console.log('\nShutting down...');
+        process.stderr.write('\nShutting down...\n');
         try {
           await result.server.stop();
         } catch {
