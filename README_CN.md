@@ -1,18 +1,25 @@
+<div align="center">
+
 # AgentLink
 
-AI 编程智能体的 P2P 通信层。通过加密通道连接局域网内的 AI 智能体，借助 mDNS 自动发现对等节点，并通过模型上下文协议（MCP）委派任务。
+**AI 智能体的 P2P 通信层**
 
-## 特性
+通过加密通道连接局域网内的 AI 智能体，借助 mDNS 自动发现对等节点，并通过模型上下文协议（MCP）委派任务。
 
-- **加密 P2P 传输** — 基于 TCP 的连接，使用 libsodium 的 XChaCha20-Poly1305 secretstream 加密和 Ed25519 密钥交换
-- **零配置发现** — mDNS 广播/监听，自动检测局域网对等节点，支持静态节点回退
-- **任务委派** — 完整的任务生命周期（创建 → 接受 → 进度 → 完成/失败），支持优先级、超时和产物附件
-- **信任管理** — 显式信任模型，支持已知智能体自动审批、团队种子导入/导出
-- **MCP 集成** — 将所有能力暴露为 MCP 工具、资源和提示——开箱即用，兼容任何支持 MCP 的 AI 智能体
-- **审计日志** — 每条入站/出站事件以 JSONL 格式记录，支持全链路追踪
-- **网络韧性** — 指数退避自动重连、DHCP 自适应、地址簿跟踪
+[![npm 版本](https://img.shields.io/npm/v/@mjxupup/agentlink?color=blue&label=npm)](https://www.npmjs.com/package/@mjxupup/agentlink)
+[![GitHub 发布](https://img.shields.io/github/v/tag/MjxUpUp/AgentLink?color=green&label=release)](https://github.com/MjxUpUp/AgentLink/releases)
+[![许可证: MIT](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
+[![Node.js >=18](https://img.shields.io/badge/node-%3E%3D18-green.svg)](https://nodejs.org/)
 
-## 架构
+[English](README.md)
+
+</div>
+
+---
+
+## 为什么选择 AgentLink？
+
+AI 编程智能体（Claude、Cursor、Copilot）各自独立工作。AgentLink 让它们能在局域网内**互相发现**、**安全通信**、**委派任务** —— 无需云服务、无需 API 密钥、零配置。
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -42,7 +49,17 @@ AI 编程智能体的 P2P 通信层。通过加密通道连接局域网内的 AI
        智能体 A     智能体 B     智能体 C
 ```
 
-## 快速开始
+## 特性
+
+- **加密 P2P 传输** — 基于 TCP 的连接，使用 libsodium 的 XChaCha20-Poly1305 secretstream 加密和 Ed25519 密钥交换
+- **零配置发现** — mDNS 广播/监听，自动检测局域网对等节点，支持静态节点回退
+- **任务委派** — 完整的任务生命周期（创建 → 接受 → 进度 → 完成/失败），支持优先级、超时和产物附件
+- **信任管理** — 显式信任模型，支持已知智能体自动审批、团队种子导入/导出
+- **MCP 集成** — 将所有能力暴露为 MCP 工具、资源和提示——开箱即用，兼容任何支持 MCP 的 AI 智能体
+- **审计日志** — 每条入站/出站事件以 JSONL 格式记录，支持全链路追踪
+- **网络韧性** — 指数退避自动重连、DHCP 自适应、地址簿跟踪
+
+## 安装
 
 ### 方式一：一键安装（Claude Desktop）
 
@@ -50,7 +67,7 @@ AI 编程智能体的 P2P 通信层。通过加密通道连接局域网内的 AI
 
 首次启动会自动使用默认配置初始化。
 
-### 方式二：命令行安装
+### 方式二：npm
 
 ```bash
 npx @mjxupup/agentlink serve
@@ -58,7 +75,7 @@ npx @mjxupup/agentlink serve
 
 首次运行会引导你完成设置，无需单独执行 init 命令。
 
-### 适用于其他 MCP 宿主（Cursor、VS Code 等）
+### 方式三：MCP 宿主配置（Cursor、VS Code 等）
 
 添加到 MCP 宿主配置中：
 
@@ -73,31 +90,43 @@ npx @mjxupup/agentlink serve
 }
 ```
 
-### 手动初始化（可选）
+> [!TIP]
+> 以上三种方式均支持首次运行自动初始化，无需手动配置。
+
+## 快速开始
 
 ```bash
-npx agentlink init --name "My Agent" --type "coder" --capabilities "code-review,testing"
+# 启动 MCP 服务器（首次运行自动初始化）
+npx @mjxupup/agentlink serve
+
+# 或自定义身份后启动
+npx @mjxupup/agentlink init --name "Code Reviewer" --type "reviewer" --capabilities "code-review,testing"
+
+# 查看状态
+npx @mjxupup/agentlink status
 ```
 
-## 命令行
+### 命令行参考
+
+| 命令 | 说明 |
+|------|------|
+| `agentlink init` | 初始化身份和配置 |
+| `agentlink serve` | 启动 MCP 服务器（含 P2P 传输和节点发现） |
+| `agentlink status` | 显示智能体状态、信任列表和活跃任务 |
+| `agentlink trust list` | 列出受信任的智能体 |
+| `agentlink trust remove <id>` | 移除受信任的智能体 |
+
+#### Init 选项
 
 ```
-agentlink init              初始化身份和配置
-agentlink serve             启动 MCP 服务器（含 P2P 传输和节点发现）
-agentlink status            显示智能体状态、信任列表和活跃任务
-agentlink trust list        列出受信任的智能体
-agentlink trust remove <id> 移除受信任的智能体
-```
-
-### Init 选项
-
-```
---name <name>              智能体显示名称
---type <type>              智能体类型（如 coder、reviewer）
+--name <name>              智能体显示名称（默认：主机名）
+--type <type>              智能体类型：agent、coder、reviewer 等（默认：agent）
 --capabilities <caps>      逗号分隔的能力列表
 ```
 
 ## MCP 工具
+
+运行后，AgentLink 向 AI 智能体暴露以下 MCP 工具：
 
 | 工具 | 描述 |
 |------|------|
@@ -117,11 +146,13 @@ agentlink trust remove <id> 移除受信任的智能体
 
 ## 安全模型
 
-- **Ed25519 身份** — 每个智能体在初始化时生成密钥对。智能体 ID 从公钥派生（`al-XXXXXXXX-XXXXXXXX-XXXXXXXX`）。
-- **加密传输** — 所有 TCP 流量使用 XChaCha20-Poly1305 secretstream，会话密钥通过 `crypto_kx` 派生。
-- **签名消息** — 每条消息使用发送者的 Ed25519 私钥签名，接收方验证签名。
-- **基于信任的访问控制** — 智能体默认不受信任。需要显式信任授权才能进行任务委派和广播。
-- **团队种子** — 支持导出/导入信任列表，用于预配置团队。
+| 层级 | 机制 |
+|------|------|
+| **身份** | 初始化时生成 Ed25519 密钥对。智能体 ID 从公钥派生（`al-XXXXXXXX-XXXXXXXX-XXXXXXXX`）。 |
+| **传输** | 所有 TCP 流量使用 XChaCha20-Poly1305 secretstream，会话密钥通过 `crypto_kx` 派生。 |
+| **消息** | 每条消息使用发送者的 Ed25519 私钥签名，接收方验证签名。 |
+| **访问控制** | 智能体默认不受信任。需要显式信任授权才能进行任务委派和广播。 |
+| **团队部署** | 支持导出/导入信任列表，用于预配置团队。 |
 
 ## 配置
 
@@ -153,57 +184,42 @@ agentlink trust remove <id> 移除受信任的智能体
 }
 ```
 
-## 项目结构
-
-```
-src/
-├── cli/               # 命令行入口 (commander)
-│   ├── index.ts
-│   └── actions.ts
-├── core/
-│   ├── identity.ts    # Ed25519 密钥生成、签名、验签
-│   ├── transport.ts   # TCP 传输层（secretstream 加密）
-│   ├── discovery.ts   # mDNS 广播/监听 + 静态节点
-│   ├── task-manager.ts # 任务生命周期（SQLite 持久化）
-│   ├── trust-manager.ts # 信任存储（团队种子导入/导出）
-│   ├── audit-logger.ts  # JSONL 审计日志
-│   ├── address-book.ts  # 对等节点地址跟踪
-│   └── types.ts       # 共享类型和常量
-├── db/
-│   └── database.ts    # SQLite 模式和查询
-├── mcp/
-│   ├── server.ts      # AgentLinkServer — 组装所有模块
-│   └── tools.ts       # MCP 工具、资源和提示
-└── index.ts           # 公共 API 导出
-```
-
 ## 开发
 
 ```bash
-# 安装依赖
 npm install
-
-# 构建
 npm run build
-
-# 运行测试
 npm test
-
-# 类型检查
 npm run lint
 ```
 
 ## 技术栈
 
-- **运行时：** Node.js (TypeScript, ESM)
-- **传输：** 原生 TCP，长度帧消息
-- **加密：** libsodium（Ed25519 签名、X25519 密钥交换、XChaCha20-Poly1305 加密）
-- **发现：** bonjour-service (mDNS/DNS-SD)
-- **数据库：** better-sqlite3 (WAL 模式)
-- **MCP：** @modelcontextprotocol/sdk
-- **CLI：** commander
-- **测试：** vitest
+| 组件 | 技术 |
+|------|------|
+| 运行时 | Node.js (TypeScript, ESM) |
+| 传输 | 原生 TCP，长度帧消息 |
+| 加密 | libsodium（Ed25519 签名、X25519 密钥交换、XChaCha20-Poly1305 加密） |
+| 发现 | bonjour-service (mDNS/DNS-SD) |
+| 数据库 | better-sqlite3 (WAL 模式) |
+| MCP SDK | @modelcontextprotocol/sdk |
+| CLI | commander |
+| 测试 | vitest |
+
+## 参与贡献
+
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 发起 Pull Request
 
 ## 许可证
 
-MIT
+本项目基于 MIT 许可证开源 — 详见 [LICENSE](LICENSE) 文件。
+
+<div align="center">
+
+**[报告 Bug](https://github.com/MjxUpUp/AgentLink/issues) · [功能建议](https://github.com/MjxUpUp/AgentLink/issues) · [下载最新版](https://github.com/MjxUpUp/AgentLink/releases/latest)**
+
+</div>

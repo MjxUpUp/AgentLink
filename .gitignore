@@ -3,4 +3,5 @@ dist/
 .agentlink/
 *.db
 *.jsonl
+*.mcpb
 docs/
