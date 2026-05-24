@@ -160,6 +160,11 @@ export class AgentLinkServer {
           description: (params.description as string) || '',
           priority: (params.priority as string) || 'medium',
         });
+      } else if (msg.method === Methods.AGENT_ADDRESS_UPDATE) {
+        const endpoints = msg.params.endpoints as Array<{ ip: string; port: number }>;
+        if (endpoints && endpoints.length > 0) {
+          addressBook.updateAddress(agentId, endpoints[0].ip, endpoints[0].port, 'address-book');
+        }
       }
     };
 
@@ -196,6 +201,27 @@ export class AgentLinkServer {
         },
         onAgentLost(agentId) {
           onlineAgents.delete(agentId);
+        },
+        onNetworkChange(endpoints) {
+          // Send address_update to all connected peers
+          for (const peerId of transport.connectedPeers) {
+            const msg: AgentLinkMessage = {
+              jsonrpc: '2.0',
+              id: `addr-${Date.now()}-${peerId.slice(0, 8)}`,
+              method: Methods.AGENT_ADDRESS_UPDATE,
+              params: {
+                endpoints: endpoints.ips.map(ip => ({ ip, port: endpoints.port })),
+              },
+              signature: '',
+              timestamp: new Date().toISOString(),
+            };
+            msg.signature = signMessage(msg, identity.secretKey);
+            try {
+              transport.send(peerId, msg);
+            } catch {
+              // Peer may have disconnected
+            }
+          }
         },
       },
       {

@@ -6,8 +6,8 @@ const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3');
 
 const VALID_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  created: ['in_progress', 'rejected', 'cancelled'],
-  accepted: ['in_progress', 'cancelled'],
+  created: ['accepted', 'rejected', 'cancelled'],
+  accepted: ['in_progress', 'rejected', 'cancelled'],
   rejected: [],
   in_progress: ['completed', 'failed', 'cancelled'],
   completed: [],
@@ -101,6 +101,10 @@ export class TaskManager {
   }
 
   acceptTask(taskId: string): Task {
+    return this.transition(taskId, 'accepted');
+  }
+
+  startTask(taskId: string): Task {
     return this.transition(taskId, 'in_progress');
   }
 

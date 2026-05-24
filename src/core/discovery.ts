@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import type { AgentIdentity } from './types.js';
+import { AGENTLINK_VERSION } from './types.js';
+import { getFingerprint } from './identity.js';
 
 const require = createRequire(import.meta.url);
 
@@ -15,12 +17,12 @@ export interface DiscoveryCallbacks {
     source: 'mdns';
   }) => void;
   onAgentLost: (agentId: string) => void;
-  onNetworkChange?: () => void;
+  onNetworkChange?: (endpoints: { ips: string[]; port: number }) => void;
 }
 
 export interface DiscoveryConfig {
   mdns: boolean;
-  peers: Array<{ host: string; port: number }>;
+  peers: Array<{ host: string; port: number; id?: string }>;
 }
 
 const SERVICE_TYPE = '_agentlink._tcp';
@@ -147,6 +149,8 @@ export class Discovery {
         cap: this.identity.capabilities.join(','),
         status: 'online',
         type: this.identity.agentType,
+        ver: AGENTLINK_VERSION,
+        fp: `sha256:${getFingerprint(this.identity.publicKey)}`,
       },
     });
   }
@@ -273,15 +277,17 @@ export class Discovery {
   private handleNetworkChange(): void {
     // Re-publish the mDNS service with updated info
     this.refresh();
-    // Notify via callback
-    this.callbacks.onNetworkChange?.();
+    // Notify via callback with current endpoints
+    const ips = Array.from(this.getCurrentIPs());
+    this.callbacks.onNetworkChange?.({ ips, port: this.port });
   }
 
   private useStaticPeers(): void {
     for (const peer of this.config.peers) {
+      const agentId = peer.id ?? `static-${peer.host}:${peer.port}`;
       this.callbacks.onAgentFound({
-        agentId: `static-${peer.host}:${peer.port}`,
-        name: `static-${peer.host}`,
+        agentId,
+        name: peer.id ? `peer-${peer.id}` : `static-${peer.host}`,
         agentType: 'unknown',
         capabilities: [],
         ip: peer.host,

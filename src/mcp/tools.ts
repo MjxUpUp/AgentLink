@@ -249,7 +249,7 @@ export function registerResources(server: McpServer, deps: ToolDeps): void {
     async (_uri) => {
       const agents = deps.getOnlineAgents();
       return {
-        contents: [{ uri: 'agentlink://agents', text: JSON.stringify(agents) }],
+        contents: [{ uri: 'agentlink://agents', mimeType: 'application/json', text: JSON.stringify(agents) }],
       };
     },
   );
@@ -265,7 +265,7 @@ export function registerResources(server: McpServer, deps: ToolDeps): void {
         !['completed', 'failed', 'cancelled'].includes(t.status),
       );
       return {
-        contents: [{ uri: 'agentlink://tasks', text: JSON.stringify(active) }],
+        contents: [{ uri: 'agentlink://tasks', mimeType: 'application/json', text: JSON.stringify(active) }],
       };
     },
   );
@@ -283,7 +283,7 @@ export function registerResources(server: McpServer, deps: ToolDeps): void {
         trustedAt: r.trustedAt,
       }));
       return {
-        contents: [{ uri: 'agentlink://trust', text: JSON.stringify(trusted) }],
+        contents: [{ uri: 'agentlink://trust', mimeType: 'application/json', text: JSON.stringify(trusted) }],
       };
     },
   );

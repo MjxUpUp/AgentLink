@@ -337,6 +337,7 @@ describe('Tool: agentlink_wait_for_reply', () => {
       priority: 'medium',
     });
     taskManager.acceptTask(task.id);
+    taskManager.startTask(task.id);
     taskManager.completeTask(task.id, [
       { type: 'text', name: 'reply', content: 'Done!' },
     ]);
@@ -409,6 +410,7 @@ describe('Resources', () => {
       requester: 'a', executor: 'b', type: 't', title: 'Done', description: '', priority: 'low',
     });
     taskManager.acceptTask(t2.id);
+    taskManager.startTask(t2.id);
     taskManager.completeTask(t2.id, []);
 
     const handler = captureResourceHandler('agentlink://tasks', []);

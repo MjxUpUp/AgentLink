@@ -44,7 +44,7 @@ describe('TaskManager', () => {
     expect(task.artifacts).toEqual([]);
   });
 
-  it('should accept a task (created → in_progress)', () => {
+  it('should accept a task (created → accepted)', () => {
     const task = taskManager.createTask({
       requester: 'al-agent-a',
       executor: 'al-agent-b',
@@ -55,7 +55,7 @@ describe('TaskManager', () => {
     });
 
     const updated = taskManager.acceptTask(task.id);
-    expect(updated.status).toBe('in_progress');
+    expect(updated.status).toBe('accepted');
   });
 
   it('should reject a task (created → rejected)', () => {
@@ -83,6 +83,7 @@ describe('TaskManager', () => {
     });
 
     taskManager.acceptTask(task.id);
+    taskManager.startTask(task.id);
 
     const artifacts = [
       { type: 'text' as const, name: 'summary', content: 'LGTM' },
@@ -106,6 +107,7 @@ describe('TaskManager', () => {
     });
 
     taskManager.acceptTask(task.id);
+    taskManager.startTask(task.id);
 
     const updated = taskManager.failTask(task.id, 'Agent crashed');
     expect(updated.status).toBe('failed');
@@ -136,6 +138,7 @@ describe('TaskManager', () => {
     });
 
     taskManager.acceptTask(task.id);
+    taskManager.startTask(task.id);
 
     // Cannot reject an in_progress task
     expect(() => taskManager.rejectTask(task.id)).toThrow();
@@ -195,9 +198,9 @@ describe('TaskManager', () => {
     expect(created).toHaveLength(1);
     expect(created[0].id).toBe(t2.id);
 
-    const inProgress = taskManager.listTasks('in_progress');
-    expect(inProgress).toHaveLength(1);
-    expect(inProgress[0].id).toBe(t1.id);
+    const accepted = taskManager.listTasks('accepted');
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0].id).toBe(t1.id);
   });
 
   it('should list all tasks when no filter', () => {
@@ -218,6 +221,7 @@ describe('TaskManager', () => {
     });
 
     taskManager.acceptTask(task.id);
+    taskManager.startTask(task.id);
 
     // progress is tracked via the task's updated_at timestamp
     const updated = taskManager.updateProgress(task.id, { percent: 50, message: 'halfway' });

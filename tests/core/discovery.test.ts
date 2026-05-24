@@ -118,6 +118,8 @@ describe('Discovery', () => {
       cap: 'code,search',
       status: 'online',
       type: 'assistant',
+      ver: '0.1.0',
+      fp: expect.stringMatching(/^sha256:[0-9a-f]{16}$/),
     });
 
     // Browser should be created
@@ -326,6 +328,8 @@ describe('Discovery', () => {
       cap: 'plan,execute,review',
       status: 'online',
       type: 'planner',
+      ver: '0.1.0',
+      fp: expect.stringMatching(/^sha256:[0-9a-f]{16}$/),
     });
 
     discovery.stop();
@@ -455,7 +459,7 @@ describe('Discovery', () => {
         mdns: false,
         peers: [
           { host: '10.0.0.5', port: 9000 },
-          { host: '10.0.0.6', port: 9001 },
+          { host: '10.0.0.6', port: 9001, id: 'al-REALID00-REALID00-REALID00' },
         ],
       },
       createMockBonjourFactory(),
@@ -474,8 +478,8 @@ describe('Discovery', () => {
       source: 'mdns',
     });
     expect(onAgentFound).toHaveBeenCalledWith({
-      agentId: 'static-10.0.0.6:9001',
-      name: 'static-10.0.0.6',
+      agentId: 'al-REALID00-REALID00-REALID00',
+      name: 'peer-al-REALID00-REALID00-REALID00',
       agentType: 'unknown',
       capabilities: [],
       ip: '10.0.0.6',
@@ -630,6 +634,54 @@ describe('Discovery', () => {
       expect(onNetworkChange).not.toHaveBeenCalled();
     });
 
+    it('should pass endpoints to onNetworkChange when IPs change', () => {
+      const onAgentFound = vi.fn();
+      const onAgentLost = vi.fn();
+      const onNetworkChange = vi.fn();
+      const identity = createTestIdentity();
+
+      let callCount = 0;
+      vi.spyOn(os, 'networkInterfaces').mockImplementation(() => {
+        callCount++;
+        if (callCount <= 2) {
+          return {
+            eth0: [
+              { address: '192.168.1.10', netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: false, cidr: '192.168.1.10/24' },
+            ],
+          } as any;
+        }
+        return {
+          eth0: [
+            { address: '192.168.1.20', netmask: '255.255.255.0', family: 'IPv4', mac: '00:00:00:00:00:00', internal: false, cidr: '192.168.1.20/24' },
+          ],
+        } as any;
+      });
+
+      const discovery = new Discovery(
+        identity,
+        9876,
+        { onAgentFound, onAgentLost, onNetworkChange },
+        { mdns: true, peers: [] },
+        createMockBonjourFactory(),
+      );
+
+      discovery.start();
+
+      // First check — same IPs
+      vi.advanceTimersByTime(5_000);
+      expect(onNetworkChange).not.toHaveBeenCalled();
+
+      // Second check — IPs changed
+      vi.advanceTimersByTime(5_000);
+      expect(onNetworkChange).toHaveBeenCalledWith({
+        ips: ['192.168.1.20'],
+        port: 9876,
+      });
+
+      discovery.stop();
+      vi.restoreAllMocks();
+    });
+
     it('should call refresh() and onNetworkChange when IPs change', () => {
       const onAgentFound = vi.fn();
       const onAgentLost = vi.fn();
@@ -677,6 +729,10 @@ describe('Discovery', () => {
       vi.advanceTimersByTime(5_000);
 
       expect(onNetworkChange).toHaveBeenCalledTimes(1);
+      expect(onNetworkChange).toHaveBeenCalledWith({
+        ips: ['192.168.1.20'],
+        port: 9876,
+      });
 
       // Service should have been refreshed (old one stopped, new one published)
       expect(firstService.stop).toHaveBeenCalled();

@@ -163,7 +163,7 @@ describe('Two-agent end-to-end flow', () => {
 
     // 10. Agent B sends task.accept back to Agent A
     const acceptedTask = taskManagerB.acceptTask(taskOnB.id);
-    expect(acceptedTask.status).toBe('in_progress');
+    expect(acceptedTask.status).toBe('accepted');
 
     const taskAcceptMsg = makeMessage(identityB, Methods.TASK_ACCEPT, {
       taskId: taskOnB.id,
@@ -187,6 +187,7 @@ describe('Two-agent end-to-end flow', () => {
     transportB.send(identityA.agentId, taskProgressMsg);
 
     // Update progress locally on B side too
+    taskManagerB.startTask(taskOnB.id);
     taskManagerB.updateProgress(taskOnB.id, { percent: 50, note: 'Halfway through review' });
 
     await new Promise((resolve) => setTimeout(resolve, 200));

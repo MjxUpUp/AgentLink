@@ -87,8 +87,8 @@ program
       const result = await serveAction(configDir);
 
       if (process.stdout.isTTY) {
-        console.log('AgentLink server starting...');
-        console.log('  Agent ID: ' + result.agentId);
+        process.stderr.write('AgentLink server starting...\n');
+        process.stderr.write('  Agent ID: ' + result.agentId + '\n');
       }
 
       await result.server.start();

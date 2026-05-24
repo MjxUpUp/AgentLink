@@ -32,7 +32,7 @@ export async function promptForInit(): Promise<{ name: string; type: string; cap
     output: process.stderr,
   });
 
-  console.log('Welcome to AgentLink! Let\'s set up your agent.\n');
+  process.stderr.write('Welcome to AgentLink! Let\'s set up your agent.\n\n');
 
   const name = await askQuestion(rl, 'Agent name', defaults.name);
   const type = await askQuestion(rl, 'Agent type', defaults.type);
