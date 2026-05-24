@@ -1,0 +1,23 @@
+{
+  "manifest_version": "0.2",
+  "name": "AgentLink",
+  "version": "0.1.0",
+  "description": "P2P communication layer for AI programming agents. Connect AI agents on your local network via encrypted channels, discover peers through mDNS, and delegate tasks.",
+  "author": {
+    "name": "AgentLink Team"
+  },
+  "compatibility": {
+    "node": ">=18.0.0",
+    "platforms": ["win32", "darwin", "linux"]
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "dist/cli/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/cli/index.js", "serve"]
+    }
+  },
+  "tools_generated": true,
+  "user_config": {}
+}
