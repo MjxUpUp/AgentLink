@@ -19,6 +19,11 @@ export function getConfigDir(): string {
   return path.join(os.homedir(), '.agentlink');
 }
 
+export function identityExists(configDir: string): boolean {
+  const identityPath = path.join(configDir, 'identity.json');
+  return fs.existsSync(identityPath);
+}
+
 export function loadConfig(configDir: string): AgentLinkConfig | null {
   const configPath = path.join(configDir, 'config.json');
   if (!fs.existsSync(configPath)) return null;
