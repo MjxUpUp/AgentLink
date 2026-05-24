@@ -46,14 +46,14 @@ P2P communication layer for AI programming agents. Connect AI agents on your loc
 
 ### Option 1: One-click install (Claude Desktop)
 
-Download [agentlink.mcpb](https://github.com/user/agentlink/releases) → double-click → done.
+Download [agentlink.mcpb](https://github.com/MjxUpUp/AgentLink/releases/latest/download/agentlink.mcpb) → double-click → done.
 
 First launch will auto-initialize with defaults.
 
 ### Option 2: Command line
 
 ```bash
-npx @agentlink/server serve
+npx @mjxupup/agentlink serve
 ```
 
 First run will guide you through setup. No separate init step needed.
@@ -67,7 +67,7 @@ Add to your MCP host config:
   "mcpServers": {
     "agentlink": {
       "command": "npx",
-      "args": ["-y", "@agentlink/server", "serve"]
+      "args": ["-y", "@mjxupup/agentlink", "serve"]
     }
   }
 }

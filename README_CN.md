@@ -46,14 +46,14 @@ AI 编程智能体的 P2P 通信层。通过加密通道连接局域网内的 AI
 
 ### 方式一：一键安装（Claude Desktop）
 
-下载 [agentlink.mcpb](https://github.com/user/agentlink/releases) → 双击安装 → 完成。
+下载 [agentlink.mcpb](https://github.com/MjxUpUp/AgentLink/releases/latest/download/agentlink.mcpb) → 双击安装 → 完成。
 
 首次启动会自动使用默认配置初始化。
 
 ### 方式二：命令行安装
 
 ```bash
-npx @agentlink/server serve
+npx @mjxupup/agentlink serve
 ```
 
 首次运行会引导你完成设置，无需单独执行 init 命令。
@@ -67,7 +67,7 @@ npx @agentlink/server serve
   "mcpServers": {
     "agentlink": {
       "command": "npx",
-      "args": ["-y", "@agentlink/server", "serve"]
+      "args": ["-y", "@mjxupup/agentlink", "serve"]
     }
   }
 }

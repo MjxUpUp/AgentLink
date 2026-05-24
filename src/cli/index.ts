@@ -46,7 +46,7 @@ program
         mcpServers: {
           agentlink: {
             command: 'npx',
-            args: ['-y', '@agentlink/server', 'serve'],
+            args: ['-y', '@mjxupup/agentlink', 'serve'],
           },
         },
       }, null, 2));

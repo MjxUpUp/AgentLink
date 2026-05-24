@@ -298,7 +298,7 @@ describe('Acceptance: init command defaults', () => {
   it('init prints MCP host config in output', () => {
     const result = runCli(['init'], tmpDir);
     expect(result.stdout).toContain('"mcpServers"');
-    expect(result.stdout).toContain('@agentlink/server');
+    expect(result.stdout).toContain('@mjxupup/agentlink');
     expect(result.stdout).toContain('serve');
   });
 
@@ -334,7 +334,7 @@ describe('Acceptance: package.json publish readiness', () => {
   });
 
   it('has required npm publish fields', () => {
-    expect(pkg.name).toBe('@agentlink/server');
+    expect(pkg.name).toBe('@mjxupup/agentlink');
     expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(pkg.description).toBeDefined();
     expect(pkg.license).toBe('MIT');
@@ -463,7 +463,7 @@ describe('Acceptance: README dual-track Quick Start', () => {
     );
 
     const oneClickIdx = readme.indexOf('One-click install');
-    const cliIdx = readme.indexOf('npx @agentlink/server serve');
+    const cliIdx = readme.indexOf('npx @mjxupup/agentlink serve');
     const mcpHostIdx = readme.indexOf('"mcpServers"');
     const manualIdx = readme.indexOf('Manual init');
 
@@ -483,7 +483,7 @@ describe('Acceptance: README dual-track Quick Start', () => {
     );
 
     const oneClickIdx = readme.indexOf('一键安装');
-    const cliIdx = readme.indexOf('npx @agentlink/server serve');
+    const cliIdx = readme.indexOf('npx @mjxupup/agentlink serve');
     const mcpHostIdx = readme.indexOf('"mcpServers"');
     const manualIdx = readme.indexOf('手动初始化');
 
