@@ -24,8 +24,8 @@ program
 program
   .command('init')
   .description('Initialize AgentLink identity and config')
-  .option('--name <name>', 'Agent name', 'My Agent')
-  .option('--type <type>', 'Agent type', 'unknown')
+  .option('--name <name>', 'Agent name', os.hostname())
+  .option('--type <type>', 'Agent type', 'agent')
   .option('--capabilities <caps>', 'Comma-separated capabilities', '')
   .action(async (opts) => {
     const configDir = getConfigDir();

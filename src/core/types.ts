@@ -85,7 +85,7 @@ export interface AgentLinkConfig {
     mdns: boolean;
     bindAllInterfaces: boolean;
     excludeInterfaces: string[];
-    peers: Array<{ host: string; port: number }>;
+    peers: Array<{ host: string; port: number; id?: string }>;
   };
   security: {
     requireApproval: TrustLevel;
@@ -136,7 +136,7 @@ export const Methods = {
 export const DEFAULT_CONFIG: AgentLinkConfig = {
   identity: {
     name: '',
-    agentType: 'unknown',
+    agentType: 'agent',
     capabilities: [],
   },
   network: {
@@ -156,6 +156,8 @@ export const DEFAULT_CONFIG: AgentLinkConfig = {
     auditLog: true,
   },
 };
+
+export const AGENTLINK_VERSION = '0.1.0';
 
 export const DEFAULT_CONFIG_DIR = '.agentlink';
 export const IDENTITY_FILE = 'identity.json';
