@@ -2,6 +2,10 @@
   "name": "@agentlink/server",
   "version": "0.1.0",
   "description": "P2P communication layer for AI programming agents",
+  "keywords": ["mcp", "agent", "p2p", "ai", "model-context-protocol"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/user/agentlink" },
+  "files": ["dist"],
   "type": "module",
   "bin": {
     "agentlink": "./dist/cli/index.js"
@@ -11,7 +15,9 @@
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "pack:mcpb": "dxt pack -o agentlink.mcpb"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
@@ -19,7 +25,8 @@
     "better-sqlite3": "^11.9.0",
     "libsodium-wrappers": "^0.7.15",
     "commander": "^13.1.0",
-    "uuid": "^11.0.0"
+    "uuid": "^11.0.0",
+    "zod": "^3.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
