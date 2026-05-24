@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import os from 'node:os';
+import path from 'node:path';
 import { Command } from 'commander';
 import {
   initAction,
@@ -7,7 +9,9 @@ import {
   trustRemoveAction,
   statusAction,
   getConfigDir,
+  identityExists,
 } from './actions.js';
+import { promptForInit, getAutoInitOptions } from './prompts.js';
 
 const program = new Command();
 program
@@ -64,15 +68,31 @@ program
     const configDir = getConfigDir();
 
     try {
+      // Auto-init: if no identity, create one before serving
+      if (!identityExists(configDir)) {
+        if (process.stdout.isTTY) {
+          const opts = await promptForInit();
+          await initAction(opts, configDir);
+          console.log('AgentLink initialized!\n');
+        } else {
+          const opts = getAutoInitOptions();
+          await initAction(opts, configDir);
+          console.error('[agentlink] No identity found. Auto-initializing with defaults.');
+          console.error(`[agentlink] Identity created at ${path.join(configDir, 'identity.json')}`);
+          console.error('[agentlink] WARNING: Secret key created. Protect this file.');
+          console.error('[agentlink] Run `agentlink init` from a terminal to customize.\n');
+        }
+      }
+
       const result = await serveAction(configDir);
 
-      console.log('AgentLink server starting...');
-      console.log('  Agent ID: ' + result.agentId);
+      if (process.stdout.isTTY) {
+        console.log('AgentLink server starting...');
+        console.log('  Agent ID: ' + result.agentId);
+      }
 
-      // Start the MCP server (stdio transport + network transport + discovery)
       await result.server.start();
 
-      // Graceful shutdown
       const shutdown = async () => {
         console.log('\nShutting down...');
         try {
